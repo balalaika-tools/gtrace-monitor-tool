@@ -3,3 +3,6 @@ __pycache__/
 *.pyc
 .env
 .cache/
+fill-dot-env.sh
+docs/
+.claude/

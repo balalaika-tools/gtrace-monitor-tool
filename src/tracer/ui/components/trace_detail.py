@@ -3,11 +3,13 @@ from __future__ import annotations
 import html
 import json
 import re
+from pathlib import Path
 
 import plotly.graph_objects as go
 import streamlit as st
 
 from tracer.analysis.tokens import TokenSummary, summarize_span_tokens, summarize_trace_tokens
+from tracer.core.settings import get_settings
 from tracer.models.trace import Span, Trace
 from tracer.ui import state
 from tracer.ui.styles.theme import (
@@ -26,6 +28,29 @@ def _fmt_dur(ms: int | None) -> str:
     return f"{ms / 1000:.2f}s"
 
 
+_TS_PREFIX = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?\s*")
+
+
+def _render_download_button(trace_id: str):
+    store_dir = state.get_trace_store_dir()
+    if not store_dir:
+        return
+    trace_file = Path(store_dir) / f"{trace_id}.json"
+    if not trace_file.exists():
+        return
+    raw = trace_file.read_text(encoding="utf-8")
+    cleaned = "\n".join(
+        _TS_PREFIX.sub("", line) for line in raw.splitlines() if line.strip()
+    )
+    st.download_button(
+        label="⬇ log",
+        data=cleaned,
+        file_name=f"{trace_id}.jsonl",
+        mime="application/x-ndjson",
+        use_container_width=True,
+    )
+
+
 def render_trace_detail(trace: Trace):
     """Render the full detail view for a single trace."""
     # Back button
@@ -35,8 +60,12 @@ def render_trace_detail(trace: Trace):
             del st.query_params["trace_id"]
         st.rerun()
 
-    # Header
-    st.markdown(f"### Trace `{trace.trace_id}`")
+    # Header + download button
+    hcol, dlcol = st.columns([8, 1])
+    with hcol:
+        st.markdown(f"### Trace `{trace.trace_id}`")
+    with dlcol:
+        _render_download_button(trace.trace_id)
 
     # Tags
     if trace.tags:
@@ -252,11 +281,12 @@ def _format_llm_span_attrs(attrs: dict) -> dict:
     if model:
         result["model"] = model
 
-    input_messages = _simplify_messages(attrs.get("delta"))
+    _max = get_settings().span_content_max_chars
+    input_messages = _simplify_messages(attrs.get("delta"), max_chars=_max)
     if input_messages:
         result["input"] = input_messages
 
-    response_messages = _simplify_messages(attrs.get("response"))
+    response_messages = _simplify_messages(attrs.get("response"), max_chars=_max)
     if response_messages:
         result["response"] = response_messages
 
@@ -281,7 +311,7 @@ def _format_tool_span_attrs(attrs: dict) -> dict:
     return _normalize_for_display(ordered)
 
 
-def _simplify_messages(messages) -> list[dict]:
+def _simplify_messages(messages, max_chars: int = 900) -> list[dict]:
     if not isinstance(messages, list):
         return []
 
@@ -332,7 +362,7 @@ def _simplify_messages(messages) -> list[dict]:
 
         text = "\n\n".join(_normalize_text(part).strip() for part in text_parts if str(part).strip())
         if text:
-            max_len = 320 if role == "system" else 900
+            max_len = 320 if role == "system" else max_chars
             entry["text"] = _truncate(text, max_len)
 
         if parsed_data:
@@ -349,17 +379,140 @@ def _simplify_messages(messages) -> list[dict]:
 
 def _coerce_json_string(value):
     if isinstance(value, str):
-        stripped = value.strip()
-        if len(stripped) > 200_000:
+        candidate = _extract_json_candidate(value)
+        if candidate is None:
             return value
-        if (stripped.startswith("{") and stripped.endswith("}")) or (
-            stripped.startswith("[") and stripped.endswith("]")
-        ):
-            try:
-                return json.loads(stripped)
-            except Exception:
-                return value
+        parsed = _try_load_json(candidate)
+        if parsed is not None:
+            return parsed
     return value
+
+
+def _extract_json_candidate(value: str) -> str | None:
+    stripped = value.strip()
+    if not stripped or len(stripped) > 200_000:
+        return None
+
+    direct = _maybe_json_text(stripped)
+    if direct is not None:
+        return direct
+
+    for match in re.finditer(r"```(?:json|javascript|js|python|text|txt)?\s*(.*?)\s*```", stripped, re.S | re.I):
+        block = match.group(1).strip()
+        candidate = _maybe_json_text(block)
+        if candidate is not None:
+            return candidate
+
+    return _first_balanced_json_substring(stripped)
+
+
+def _maybe_json_text(text: str) -> str | None:
+    if (text.startswith("{") and text.endswith("}")) or (
+        text.startswith("[") and text.endswith("]")
+    ):
+        return text
+    return None
+
+
+def _first_balanced_json_substring(text: str) -> str | None:
+    start = -1
+    opening = ""
+    closing = ""
+    for idx, char in enumerate(text):
+        if char in "[{":
+            start = idx
+            opening = char
+            closing = "}" if char == "{" else "]"
+            break
+    if start == -1:
+        return None
+
+    depth = 0
+    in_string = False
+    escape = False
+    for idx in range(start, len(text)):
+        char = text[idx]
+        if in_string:
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == '"':
+                in_string = False
+            continue
+
+        if char == '"':
+            in_string = True
+            continue
+
+        if char == opening:
+            depth += 1
+        elif char == closing:
+            depth -= 1
+            if depth == 0:
+                return text[start : idx + 1]
+
+    return None
+
+
+def _try_load_json(text: str):
+    escaped_control_chars = _escape_control_chars_in_json_strings(text)
+    escaped_hex = re.sub(r"(?<!\\)\\x([0-9a-fA-F]{2})", r"\\\\x\1", text)
+    escaped_hex_and_controls = _escape_control_chars_in_json_strings(escaped_hex)
+    attempts = [
+        text,
+        escaped_hex,
+        escaped_control_chars,
+        escaped_hex_and_controls,
+    ]
+    for attempt in attempts:
+        try:
+            return json.loads(attempt)
+        except Exception:
+            continue
+    return None
+
+
+def _escape_control_chars_in_json_strings(text: str) -> str:
+    result: list[str] = []
+    in_string = False
+    escape = False
+
+    for char in text:
+        if in_string:
+            if escape:
+                result.append(char)
+                escape = False
+                continue
+
+            if char == "\\":
+                result.append(char)
+                escape = True
+                continue
+
+            if char == '"':
+                result.append(char)
+                in_string = False
+                continue
+
+            if char == "\n":
+                result.append("\\n")
+                continue
+            if char == "\r":
+                result.append("\\r")
+                continue
+            if char == "\t":
+                result.append("\\t")
+                continue
+
+            result.append(char)
+            continue
+
+        result.append(char)
+        if char == '"':
+            in_string = True
+
+    return "".join(result)
 
 
 def _normalize_for_display(value, *, key: str | None = None, depth: int = 0):
@@ -388,7 +541,7 @@ def _normalize_for_display(value, *, key: str | None = None, depth: int = 0):
     return value
 
 
-def _normalize_text(text: str, *, key: str | None = None) -> str:
+def _normalize_text(text: str, *, key: str | None = None, max_chars: int | None = 8_000) -> str:
     cleaned = text.replace("\r\n", "\n").strip()
     if not cleaned:
         return cleaned
@@ -396,8 +549,8 @@ def _normalize_text(text: str, *, key: str | None = None) -> str:
     if _looks_like_sql(cleaned, key):
         return _format_sql(cleaned)
 
-    if len(cleaned) > 8_000:
-        return _truncate(cleaned, 8_000)
+    if max_chars is not None and len(cleaned) > max_chars:
+        return _truncate(cleaned, max_chars)
 
     return cleaned
 
@@ -433,7 +586,8 @@ def _pretty_json_html(value) -> str:
         else:
             lines.append(html.escape(line))
 
-    return f'<pre class="span-attrs-json">{"\n".join(lines)}</pre>'
+    joined = "\n".join(lines)
+    return f'<pre class="span-attrs-json">{joined}</pre>'
 
 
 def _truncate(text: str, max_chars: int) -> str:
@@ -454,11 +608,12 @@ def _render_llm_calls(trace: Trace):
         model = span.attrs.get("model", "unknown")
         model_short = model.split(".")[-1].split("-v")[0] if "." in model else model
         dur = _fmt_dur(span.duration_ms)
-        status_icon = "✓" if span.status == "ok" else "✗"
+        status_icon = ":green[✓]" if span.status == "ok" else ":red[✗]"
         stop_reason = span.attrs.get("stop_reason", "")
         tok = summarize_span_tokens(span)
+        span_short = span.span_id[:12] if span.span_id else "—"
 
-        header = f"LLM Call #{seq} {status_icon} — {model_short} · {dur} · {tok.total_tokens:,} tokens"
+        header = f"*LLM Call \#{seq}* · {model_short} · {dur} · `{span_short}` · {status_icon}"
 
         with st.expander(header, expanded=False):
             st.caption(f"Model: `{model}` · Duration: {dur} · Span: `{span.span_id}`")
@@ -511,48 +666,76 @@ def _render_messages(messages: list):
             "tool": "msg-tool",
         }.get(msg_type, "msg-tool")
 
-        # Keep the previous LLM Calls bubble layout.
         if isinstance(content, list):
             for block in content:
                 if isinstance(block, dict):
                     block_type = block.get("type", "")
                     if block_type == "text":
-                        text = _normalize_text(str(block.get("text", "")))
-                        _render_message_bubble(css_class, f"{label} [text]", _truncate(text, 3000))
+                        text = _normalize_text(str(block.get("text", "")), max_chars=None)
+                        parsed = _coerce_json_string(text)
+                        if isinstance(parsed, (dict, list)):
+                            _render_message_bubble(css_class, f"{label} [text]", "")
+                            st.json(_normalize_for_display(parsed))
+                        else:
+                            _render_message_bubble(css_class, f"{label} [text]", _html_text(text))
                     elif block_type == "tool_use":
                         tool_name = block.get("name", "")
                         tool_input = _normalize_for_display(block.get("input"), key="input")
-                        text = (
-                            f"**Tool:** `{tool_name}`\n```json\n"
-                            f"{json.dumps(tool_input, indent=2, ensure_ascii=False, default=str)[:4000]}\n```"
+                        st.markdown(
+                            f'<div class="msg-tool msg-bubble">'
+                            f'<span style="font-size:0.7rem;color:#9e9e9e;font-weight:600">{label} [tool_use]</span>'
+                            f'&nbsp;&nbsp;<code style="color:#ffa726;background:#33291a;padding:2px 6px;border-radius:4px;font-size:0.8rem">'
+                            f"{html.escape(tool_name)}</code></div>",
+                            unsafe_allow_html=True,
                         )
-                        _render_message_bubble("msg-tool", f"{label} [tool_use]", text)
+                        if tool_input not in (None, "", [], {}):
+                            if isinstance(tool_input, (dict, list)):
+                                st.json(tool_input)
+                            else:
+                                _render_value(tool_input)
                     else:
                         parsed = _normalize_for_display({k: v for k, v in block.items() if k != "type"})
                         _render_message_bubble(
                             css_class,
                             f"{label} [{block_type}]",
-                            f"```json\n{json.dumps(parsed, indent=2, ensure_ascii=False, default=str)[:3000]}\n```",
+                            _html_code_block(parsed),
                         )
                 else:
-                    _render_message_bubble(css_class, label, _truncate(_normalize_text(str(block)), 2000))
+                    _render_message_bubble(
+                        css_class, label,
+                        _html_text(_normalize_text(str(block), max_chars=None)),
+                    )
         elif isinstance(content, str):
             parsed = _coerce_json_string(content)
             if isinstance(parsed, (dict, list)):
-                _render_message_bubble(
-                    css_class,
-                    label,
-                    f"```json\n{json.dumps(_normalize_for_display(parsed), indent=2, ensure_ascii=False, default=str)[:4000]}\n```",
-                )
+                _render_message_bubble(css_class, label, "")
+                st.json(_normalize_for_display(parsed))
             else:
-                _render_message_bubble(css_class, label, _truncate(_normalize_text(content), 3000))
+                _render_message_bubble(css_class, label, _html_text(_normalize_text(content, max_chars=None)))
         else:
             parsed = _normalize_for_display(content)
-            _render_message_bubble(
-                css_class,
-                label,
-                f"```json\n{json.dumps(parsed, indent=2, ensure_ascii=False, default=str)[:3000]}\n```",
-            )
+            if isinstance(parsed, (dict, list)):
+                _render_message_bubble(css_class, label, "")
+                st.json(parsed)
+            else:
+                _render_message_bubble(css_class, label, _html_text(str(parsed)))
+
+
+def _html_code_block(obj) -> str:
+    """Render a dict/list as a styled HTML pre/code block."""
+    code = html.escape(json.dumps(obj, indent=2, ensure_ascii=False, default=str))
+    return (
+        '<pre style="background:#0e1117;border-radius:6px;padding:10px 12px;'
+        'overflow-x:auto;font-size:0.78rem;margin:4px 0 0 0;line-height:1.5">'
+        f"<code>{code}</code></pre>"
+    )
+
+
+
+
+def _html_text(text: str) -> str:
+    """Render plain text safely inside an HTML bubble."""
+    return f'<p style="white-space:pre-wrap;margin:0;line-height:1.6">{html.escape(text)}</p>'
 
 
 def _render_message_bubble(css_class: str, label: str, content: str):
@@ -609,40 +792,36 @@ def _render_tool_calls(trace: Trace):
     for span in tool_spans:
         tool_name = span.attrs.get("tool", "unknown")
         dur = _fmt_dur(span.duration_ms)
-        status = status_badge(span.status)
+        status_icon = ":green[✓]" if span.status == "ok" else ":red[✗]"
+        span_short = span.span_id[:12] if span.span_id else "—"
 
-        st.markdown(
-            f"### `{tool_name}` &nbsp; {status}",
-            unsafe_allow_html=True,
-        )
-        st.caption(f"Duration: {dur} · Span: `{span.span_id}`")
+        header = f":orange[**{tool_name}**] · {dur} · `{span_short}` · {status_icon}"
 
-        # Input
-        tool_input = _normalize_for_display(span.attrs.get("input"), key="input")
-        if tool_input not in (None, "", [], {}):
-            with st.expander("Input", expanded=False):
-                if isinstance(tool_input, (dict, list)):
-                    st.json(tool_input)
-                else:
-                    _render_value(tool_input)
+        with st.expander(header, expanded=False):
+            # Input
+            tool_input = _normalize_for_display(span.attrs.get("input"), key="input")
+            if tool_input not in (None, "", [], {}):
+                with st.expander("Input", expanded=False):
+                    if isinstance(tool_input, (dict, list)):
+                        st.json(tool_input)
+                    else:
+                        _render_value(tool_input)
 
-        # Result
-        result = _normalize_for_display(span.attrs.get("result"), key="result")
-        result_size = span.attrs.get("result_size")
-        if result_size is not None:
-            st.markdown(f"**Result size:** {result_size}")
+            # Result
+            result = _normalize_for_display(span.attrs.get("result"), key="result")
+            result_size = span.attrs.get("result_size")
+            if result_size is not None:
+                st.markdown(f"**Result size:** {result_size}")
 
-        if result is not None:
-            with st.expander("Result", expanded=False):
-                if isinstance(result, (dict, list)):
-                    st.json(result)
-                else:
-                    _render_value(result)
+            if result is not None:
+                with st.expander("Result", expanded=False):
+                    if isinstance(result, (dict, list)):
+                        st.json(result)
+                    else:
+                        _render_value(result)
 
-        # Error info
-        error = span.attrs.get("error")
-        if error:
-            error_type = span.attrs.get("error_type", "")
-            st.error(f"**{error_type}:** {error}" if error_type else str(error))
-
-        st.markdown("---")
+            # Error info
+            error = span.attrs.get("error")
+            if error:
+                error_type = span.attrs.get("error_type", "")
+                st.error(f"**{error_type}:** {error}" if error_type else str(error))

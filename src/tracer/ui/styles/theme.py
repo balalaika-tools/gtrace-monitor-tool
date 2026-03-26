@@ -254,8 +254,50 @@ def apply_theme():
         /* Smaller font for filter area */
         .filter-area { font-size: 0.85rem; }
 
+        /* LLM Call expander styling */
+        div[data-testid="stExpander"] {
+            border: 1px solid %(border)s;
+            border-radius: 10px;
+            margin-bottom: 8px;
+            overflow: hidden;
+        }
+        div[data-testid="stExpander"] details summary {
+            background: %(bg_card)s;
+            padding: 10px 16px;
+            border-radius: 10px;
+            transition: background 0.15s ease;
+        }
+        div[data-testid="stExpander"] details[open] summary {
+            background: #272b34;
+            border-bottom: 1px solid %(border)s;
+            border-radius: 10px 10px 0 0;
+        }
+        div[data-testid="stExpander"] details summary:hover {
+            background: #2c313b;
+        }
         div[data-testid="stExpander"] details summary p {
-            font-size: 0.9rem;
+            font-size: 0.88rem;
+            font-weight: 500;
+            letter-spacing: 0.01em;
+        }
+        div[data-testid="stExpander"] details summary p code {
+            background: #1a1d23;
+            border: 1px solid %(border)s;
+            border-radius: 4px;
+            padding: 1px 5px;
+            font-size: 0.78rem;
+            color: %(accent)s;
+        }
+        div[data-testid="stExpander"] details summary p em {
+            color: %(llm_call)s;
+            font-style: normal;
+            font-weight: 600;
+        }
+        div[data-testid="stJson"],
+        div[data-testid="stJson"] > div {
+            background: #33291a !important;
+            border-radius: 6px;
+            padding: 4px 8px;
         }
         </style>
         """
@@ -282,7 +324,7 @@ def status_badge(status: str | None) -> str:
         return '<span class="status-ok">—</span>'
     css_class = "status-ok" if status == "ok" else "status-error"
     icon = "✓" if status == "ok" else "✗"
-    return f'<span class="{css_class}">{icon} {status}</span>'
+    return f'<span class="{css_class}">{icon}</span>'
 
 
 def tag_pill(key: str, value: str) -> str:

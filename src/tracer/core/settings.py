@@ -37,6 +37,10 @@ class Settings(BaseSettings):
         default=50_000,
         alias="MAX_LOG_EVENTS",
     )
+    span_content_max_chars: int = Field(
+        default=900,
+        alias="SPAN_CONTENT_MAX_CHARS",
+    )
 
     # ── S3 (single bucket, different prefixes) ───────────────────────────
     s3_bucket: str = Field(default="ai-exception-poc-data", alias="S3_BUCKET")
