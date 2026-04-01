@@ -5,6 +5,55 @@ from pathlib import Path
 
 import streamlit as st
 
+# ── Inline folder-picker component (uses browser's webkitdirectory) ──
+_FOLDER_PICKER_HTML = """<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<style>
+*{box-sizing:border-box}
+body{margin:0;padding:0;background:transparent;
+  font-family:-apple-system,BlinkMacSystemFont,"Inter",sans-serif}
+#btn{background:#4fc3f7;color:#0e1117;border:none;border-radius:8px;
+  font-weight:600;font-size:0.85rem;padding:9px 16px;width:100%;
+  cursor:pointer;transition:background .15s}
+#btn:hover{background:#29b6f6}
+#btn:disabled{background:#444;color:#777;cursor:default}
+#fp{display:none}
+</style></head><body>
+<input type="file" id="fp" webkitdirectory multiple>
+<button id="btn" onclick="document.getElementById('fp').click()">Browse Folder</button>
+<script>
+const btn=document.getElementById('btn'),
+      fp=document.getElementById('fp');
+function send(type,data){
+  window.parent.postMessage(
+    Object.assign({isStreamlitMessage:true,type},data),"*");
+}
+send("streamlit:componentReady",{apiVersion:1});
+send("streamlit:setFrameHeight",{height:36});
+fp.addEventListener('change',async function(){
+  const files=[...this.files].filter(f=>/\\.(jsonl|log|txt|json)$/i.test(f.name));
+  if(!files.length){
+    send("streamlit:setComponentValue",{value:null,dataType:"json"});
+    return;
+  }
+  btn.disabled=true;
+  btn.textContent='Reading '+files.length+' file(s)\u2026';
+  try{
+    const parts=await Promise.all(files.map(f=>f.text()));
+    btn.textContent='Browse Folder';
+    send("streamlit:setComponentValue",{
+      value:{content:parts.join('\\n'),file_count:files.length},
+      dataType:"json"});
+  }catch(e){
+    btn.textContent='Browse Folder';
+    send("streamlit:setComponentValue",{value:null,dataType:"json"});
+  }finally{
+    btn.disabled=false;
+  }
+});
+</script></body></html>
+"""
+
 # Ensure src/ is on the path for local dev
 _src = str(Path(__file__).resolve().parents[1])
 if _src not in sys.path:
@@ -26,6 +75,29 @@ from tracer.ui.styles.theme import apply_theme
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _CACHE_DIR = _PROJECT_ROOT / ".cache" / "traces"
 _TRACE_QUERY_PARAM = "trace_id"
+
+
+@st.cache_resource
+def _make_folder_picker():
+    """Register the folder-picker component once per process (writes a temp index.html)."""
+    import tempfile
+    import streamlit.components.v1 as components
+
+    d = Path(tempfile.mkdtemp())
+    (d / "index.html").write_text(_FOLDER_PICKER_HTML, encoding="utf-8")
+    return components.declare_component("folder_picker", path=str(d))
+
+
+def _label_with_help(label: str, tooltip: str) -> str:
+    """Render a small label + ? tooltip circle via st.markdown."""
+    safe = tooltip.replace("<", "&lt;").replace(">", "&gt;").replace("\n", "<br>")
+    return (
+        f'<div style="display:flex;align-items:center;gap:5px;margin-bottom:4px;">'
+        f'<span style="font-size:0.82rem;color:#e0e0e0;font-weight:500;">{label}</span>'
+        f'<span class="help-icon">?'
+        f'<span class="help-tooltip">{safe}</span>'
+        f'</span></div>'
+    )
 
 
 def _new_store_dir() -> str:
@@ -114,32 +186,84 @@ with st.sidebar:
                     st.error(f"Failed to fetch logs: {e}")
 
     else:  # Local file
-        uploaded = st.file_uploader(
-            "Upload JSONL log file",
-            type=["jsonl", "log", "txt", "json"],
-            key="file_upload",
-        )
-        use_sample = st.button(
-            "Use sample logs (logs.jsonl)",
-            type="secondary",
-            use_container_width=True,
-        )
+        local_mode = st.segmented_control(
+            "mode",
+            options=["📄 File(s)", "📁 Folder"],
+            default="📄 File(s)",
+            label_visibility="collapsed",
+            key="local_mode",
+        ) or "📄 File(s)"
 
-        if uploaded is not None:
-            upload_id = f"{uploaded.name}_{uploaded.size}"
-            if st.session_state.get("_last_upload_id") != upload_id:
+        st.markdown("")  # breathing room
+
+        if local_mode == "📄 File(s)":
+            st.markdown(
+                _label_with_help(
+                    "Upload log file(s)",
+                    "Accepted: .jsonl  .log  .txt  .json\n"
+                    "Select multiple files at once (Ctrl/⌘+click)\n"
+                    "Multiple traces per file are supported",
+                ),
+                unsafe_allow_html=True,
+            )
+            _upload_key = st.session_state.get("_upload_key", 0)
+            uploaded_files = st.file_uploader(
+                "Upload Log file(s)",
+                type=["jsonl", "log", "txt", "json"],
+                accept_multiple_files=True,
+                label_visibility="collapsed",
+                key=f"file_upload_{_upload_key}",
+            )
+            if st.session_state.get("_upload_flash"):
+                st.success(st.session_state.pop("_upload_flash"))
+            if uploaded_files:
                 state.clear_data()
                 _clear_trace_query_param()
                 store_dir = _new_store_dir()
-                content = uploaded.read().decode("utf-8")
-                bulk_file = write_upload_to_store(content, store_dir)
+                combined = "\n".join(f.read().decode("utf-8") for f in uploaded_files)
+                bulk_file = write_upload_to_store(combined, store_dir)
                 summaries = parse_and_store_traces(bulk_file, store_dir)
                 state.set_traces(summaries, store_dir)
                 state.set_data_source("upload")
-                st.session_state["_last_upload_id"] = upload_id
-                st.success(f"Loaded {len(summaries)} traces")
+                label = f"{len(uploaded_files)} file(s)" if len(uploaded_files) > 1 else uploaded_files[0].name
+                st.session_state["_upload_flash"] = f"Loaded {len(summaries)} traces from {label}"
+                st.session_state["_upload_key"] = _upload_key + 1
+                st.rerun()
 
-        if use_sample:
+            st.markdown("")
+            st.markdown("")  # equalise bottom gap with Folder mode
+
+        else:  # Folder
+            st.markdown(
+                _label_with_help(
+                    "Browse folder",
+                    "Picks a folder from your filesystem\n"
+                    "Scans for: .jsonl  .log  .txt  .json\n"
+                    "All matching files are merged before parsing",
+                ),
+                unsafe_allow_html=True,
+            )
+            folder_picker = _make_folder_picker()
+            folder_result = folder_picker(key="folder_picker_widget", height=36)
+            if folder_result is not None:
+                result_id = f"{folder_result.get('file_count')}_{len(folder_result.get('content', ''))}"
+                if st.session_state.get("_last_folder_id") != result_id:
+                    try:
+                        state.clear_data()
+                        _clear_trace_query_param()
+                        store_dir = _new_store_dir()
+                        bulk_file = write_upload_to_store(folder_result["content"], store_dir)
+                        summaries = parse_and_store_traces(bulk_file, store_dir)
+                        state.set_traces(summaries, store_dir)
+                        state.set_data_source("upload")
+                        st.session_state["_last_folder_id"] = result_id
+                        n = folder_result["file_count"]
+                        st.success(f"Loaded {len(summaries)} traces from {n} file(s)")
+                    except Exception as e:
+                        st.error(f"Failed to parse folder: {e}")
+
+        st.markdown("---")
+        if st.button("Use sample logs", type="secondary", use_container_width=True):
             sample_path = Path(__file__).resolve().parent / "samples" / "logs.jsonl"
             if sample_path.exists():
                 state.clear_data()

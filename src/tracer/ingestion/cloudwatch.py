@@ -128,6 +128,43 @@ def copy_local_file_to_store(file_path: str, store_dir: str) -> str:
     return bulk_file
 
 
+def copy_local_folder_to_store(folder_path: str, store_dir: str) -> tuple[str, int]:
+    """Scan a local folder for JSONL/log files and concatenate them into _bulk.jsonl.
+
+    Returns (bulk_file_path, number_of_files_merged).
+    """
+    folder = Path(folder_path)
+    if not folder.is_dir():
+        raise ValueError(f"Not a directory: {folder_path}")
+
+    patterns = ["*.jsonl", "*.log", "*.txt", "*.json"]
+    files: list[Path] = []
+    for pattern in patterns:
+        files.extend(sorted(folder.glob(pattern)))
+
+    # De-duplicate while preserving order (a file can't match two patterns)
+    seen: set[Path] = set()
+    unique_files: list[Path] = []
+    for f in files:
+        if f not in seen:
+            seen.add(f)
+            unique_files.append(f)
+
+    if not unique_files:
+        raise ValueError(f"No JSONL/log files found in: {folder_path}")
+
+    bulk_file = str(Path(store_dir) / "_bulk.jsonl")
+    with open(bulk_file, "w") as out:
+        for src in unique_files:
+            text = src.read_text(encoding="utf-8", errors="replace")
+            out.write(text)
+            if not text.endswith("\n"):
+                out.write("\n")
+
+    logger.info("Merged %d files from %s into %s", len(unique_files), folder_path, bulk_file)
+    return bulk_file, len(unique_files)
+
+
 def write_upload_to_store(content: str, store_dir: str) -> str:
     """Write uploaded file content to the store directory as _bulk.jsonl."""
     bulk_file = str(Path(store_dir) / "_bulk.jsonl")

@@ -42,6 +42,8 @@ def clear_data():
     st.session_state[_SELECTED_TRACE_ID] = None
     st.session_state[_FILTER_STATE] = FilterState()
     st.session_state[_TRACE_STORE_DIR] = None
+    # Reset folder-picker dedup so the same folder can be re-selected
+    st.session_state.pop("_last_folder_id", None)
 
 
 def get_traces() -> list[TraceSummary]:

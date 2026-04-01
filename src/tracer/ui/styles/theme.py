@@ -251,6 +251,109 @@ def apply_theme():
         /* Hide Streamlit's default footer */
         footer { visibility: hidden; }
 
+        /* ── Help tooltip (? circle) ──────────────────────────────── */
+        .help-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 15px;
+            height: 15px;
+            border-radius: 50%%;
+            border: 1px solid %(text_secondary)s;
+            color: %(text_secondary)s;
+            font-size: 0.6rem;
+            font-weight: 700;
+            cursor: help;
+            position: relative;
+            user-select: none;
+            flex-shrink: 0;
+            vertical-align: middle;
+        }
+        .help-tooltip {
+            display: none;
+            position: absolute;
+            left: 0;
+            bottom: calc(100%% + 6px);
+            transform: translateX(0);
+            background: %(bg_card)s;
+            border: 1px solid %(border)s;
+            border-radius: 6px;
+            padding: 8px 10px;
+            font-size: 0.72rem;
+            color: %(text_primary)s;
+            line-height: 1.6;
+            white-space: nowrap;
+            z-index: 9999;
+            pointer-events: none;
+            font-weight: 400;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+        }
+        .help-icon:hover .help-tooltip { display: block; }
+
+        /* ── File uploader: collapse dropzone → single coloured button ── */
+        div[data-testid="stFileUploader"] {
+            width: 100%% !important;
+        }
+        section[data-testid="stFileUploaderDropzone"] {
+            border: none !important;
+            background: transparent !important;
+            padding: 0 !important;
+            min-height: 0 !important;
+            width: 100%% !important;
+            box-sizing: border-box !important;
+        }
+        section[data-testid="stFileUploaderDropzone"] > div {
+            padding: 0 !important;
+            gap: 0 !important;
+            width: 100%% !important;
+            box-sizing: border-box !important;
+        }
+        /* hide upload icon SVG (sits outside the button) */
+        section[data-testid="stFileUploaderDropzone"] svg {
+            display: none !important;
+        }
+        /* hide drag-and-drop overlay (only appears during active drag) */
+        section[data-testid="stFileUploaderDropzone"] .StyledDragDropOverlay {
+            display: none !important;
+        }
+        /* hide size/type instructions line */
+        div[data-testid="stFileUploaderDropzoneInstructions"] {
+            display: none !important;
+        }
+        /* button wrapper span (direct child of section): force block + full width */
+        section[data-testid="stFileUploaderDropzone"] > span {
+            display: block !important;
+            width: 100%% !important;
+        }
+        /* Browse button — accent coloured, full width, height-matched to folder picker */
+        section[data-testid="stFileUploaderDropzone"] button {
+            background: %(accent)s !important;
+            color: %(bg_primary)s !important;
+            border: none !important;
+            border-radius: 8px !important;
+            font-weight: 600 !important;
+            font-size: 0.85rem !important;
+            padding: 9px 16px !important;
+            width: 100%% !important;
+            min-height: 38px !important;
+            line-height: 1.4 !important;
+            box-sizing: border-box !important;
+            cursor: pointer !important;
+            transition: background 0.15s !important;
+            display: block !important;
+        }
+        /* button inner label div — also needs full width */
+        section[data-testid="stFileUploaderDropzone"] button > div {
+            width: 100%% !important;
+        }
+        section[data-testid="stFileUploaderDropzone"] button:hover {
+            background: %(accent_hover)s !important;
+        }
+        /* Hide Streamlit's own "Limit 200MB" line — we render our own below */
+        section[data-testid="stFileUploaderDropzone"] small {
+            display: none !important;
+        }
+
         /* Smaller font for filter area */
         .filter-area { font-size: 0.85rem; }
 

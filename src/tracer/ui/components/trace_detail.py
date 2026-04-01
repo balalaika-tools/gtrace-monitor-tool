@@ -213,8 +213,11 @@ def _render_waterfall(trace: Trace):
 
 
 def _render_span_list(trace: Trace):
-    """Render all spans as an indented, expandable list."""
-    for span in trace.spans:
+    """Render all spans as an indented, expandable list, walking the parent→children tree."""
+    rendered: set[str] = set()
+
+    def _render_subtree(span: Span) -> None:
+        rendered.add(span.span_id)
         indent_px = span.depth * 24
         detail_indent_px = indent_px + 24
         badge = span_badge(span.span_name)
@@ -259,6 +262,17 @@ def _render_span_list(trace: Trace):
         </details>
         """
         st.html(details_html)
+        for child in sorted(span.children, key=lambda s: s.started_at):
+            _render_subtree(child)
+
+    # DFS from root spans — this correctly places each child under its actual parent
+    for root in sorted(trace.root_spans, key=lambda s: s.started_at):
+        _render_subtree(root)
+
+    # Render any orphan spans not reachable from root (parent_span_id points outside the trace)
+    for span in trace.spans:
+        if span.span_id not in rendered:
+            _render_subtree(span)
 
 
 def _format_span_attrs(span: Span) -> dict:
