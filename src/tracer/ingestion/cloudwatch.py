@@ -46,6 +46,8 @@ def fetch_cloudwatch_logs(
     is held in memory at a time.
     """
     settings = get_settings()
+    if not settings.log_group_name:
+        raise ValueError("LOG_GROUP_NAME is not set. Configure it in your .env before fetching from CloudWatch.")
     client = _get_client()
     max_events = settings.max_log_events
 

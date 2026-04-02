@@ -110,8 +110,16 @@ def _render_token_summary(tokens: TokenSummary, trace: Trace):
         tool_count = len(trace.tool_call_spans)
         st.markdown(metric_card("Tool Calls", str(tool_count)), unsafe_allow_html=True)
 
-    # Row 2: TOTAL TOKENS, INPUT TOKENS, CACHE READ, CACHE CREATION, OUTPUT TOKENS
-    cols2 = st.columns(5)
+    # Row 2: TOTAL TOKENS, INPUT TOKENS, CACHE READ, CACHE CREATION, OUTPUT TOKENS, EST. COST
+    s = get_settings()
+    estimated_cost = (
+        tokens.input_tokens * s.price_input
+        + tokens.output_tokens * s.price_output
+        + tokens.cache_creation_tokens * s.price_cache_creation
+        + tokens.cache_read_tokens * s.price_cache_read
+    ) / 1_000_000
+
+    cols2 = st.columns(6)
     with cols2[0]:
         st.markdown(
             metric_card("Total Tokens", f"{tokens.total_tokens:,}"),
@@ -135,6 +143,11 @@ def _render_token_summary(tokens: TokenSummary, trace: Trace):
     with cols2[4]:
         st.markdown(
             metric_card("Output Tokens", f"{tokens.output_tokens:,}"),
+            unsafe_allow_html=True,
+        )
+    with cols2[5]:
+        st.markdown(
+            metric_card("Est. Cost", f"${estimated_cost:.4f}"),
             unsafe_allow_html=True,
         )
 

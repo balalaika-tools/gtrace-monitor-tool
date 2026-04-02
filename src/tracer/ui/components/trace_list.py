@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import streamlit as st
 
+from tracer.core.settings import get_settings
 from tracer.models.trace import TraceSummary
 from tracer.ui import state
 from tracer.ui.styles.theme import metric_card, status_badge, tag_pill
@@ -54,6 +55,15 @@ def _render_trace_row(summary: TraceSummary, active_keys: list[str]):
         if key not in active_keys and val:
             tag_html += tag_pill(key, _shorten(str(val), 36))
 
+    s = get_settings()
+    cost = (
+        summary.input_tokens * s.price_input
+        + summary.output_tokens * s.price_output
+        + summary.cache_creation_tokens * s.price_cache_creation
+        + summary.cache_read_tokens * s.price_cache_read
+    ) / 1_000_000
+    cost_str = f"${cost:.4f}" if summary.total_tokens else "—"
+
     started = summary.started_at.strftime("%Y-%m-%d %H:%M:%S") if summary.started_at else "—"
     duration = _fmt_duration(summary.duration_ms)
     status_html = status_badge(summary.status)
@@ -76,6 +86,7 @@ def _render_trace_row(summary: TraceSummary, active_keys: list[str]):
             <span>Duration: <b style="color:#e0e0e0">{duration}</b></span>
             <span>LLM calls: <b style="color:#e0e0e0">{llm_calls}</b></span>
             <span>Tokens: <b style="color:#e0e0e0">{total_tok}</b></span>
+            <span>Cost: <b style="color:#e0e0e0">{cost_str}</b></span>
         </div>
         <div class="trace-row-tags">{tag_html}</div>
     </div>

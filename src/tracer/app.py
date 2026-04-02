@@ -13,7 +13,7 @@ _FOLDER_PICKER_HTML = """<!DOCTYPE html>
 body{margin:0;padding:0;background:transparent;
   font-family:-apple-system,BlinkMacSystemFont,"Inter",sans-serif}
 #btn{background:#4fc3f7;color:#0e1117;border:none;border-radius:8px;
-  font-weight:600;font-size:0.85rem;padding:9px 16px;width:100%;
+  font-weight:600;font-size:0.85rem;padding:0 16px;width:100%;height:36px;
   cursor:pointer;transition:background .15s}
 #btn:hover{background:#29b6f6}
 #btn:disabled{background:#444;color:#777;cursor:default}
@@ -29,7 +29,7 @@ function send(type,data){
     Object.assign({isStreamlitMessage:true,type},data),"*");
 }
 send("streamlit:componentReady",{apiVersion:1});
-send("streamlit:setFrameHeight",{height:36});
+send("streamlit:setFrameHeight",{height:37});
 fp.addEventListener('change',async function(){
   const files=[...this.files].filter(f=>/\\.(jsonl|log|txt|json)$/i.test(f.name));
   if(!files.length){
@@ -132,7 +132,7 @@ def _sync_selected_trace_from_query():
 
 # ── Page config ──────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Agentic Trace Monitor",
+    page_title="gTrace Monitor",
     page_icon="🔍",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -144,7 +144,14 @@ state.init_state()
 
 # ── Sidebar: data source ─────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("## Agentic Trace Monitor")
+    st.markdown(
+        '<div style="padding:4px 0 12px 0;line-height:1.1">'
+        '<span style="font-size:1.5rem;font-weight:900;letter-spacing:-0.03em;color:#4fc3f7">g</span>'
+        '<span style="font-size:1.5rem;font-weight:700;letter-spacing:-0.02em;color:#e0e0e0">Trace</span>'
+        '<span style="font-size:1.5rem;font-weight:300;color:#9e9e9e;margin-left:6px">Monitor</span>'
+        "</div>",
+        unsafe_allow_html=True,
+    )
     st.markdown("---")
 
     source = st.radio(
@@ -244,7 +251,7 @@ with st.sidebar:
                 unsafe_allow_html=True,
             )
             folder_picker = _make_folder_picker()
-            folder_result = folder_picker(key="folder_picker_widget", height=36)
+            folder_result = folder_picker(key="folder_picker_widget", height=37)
             if folder_result is not None:
                 result_id = f"{folder_result.get('file_count')}_{len(folder_result.get('content', ''))}"
                 if st.session_state.get("_last_folder_id") != result_id:
@@ -262,8 +269,7 @@ with st.sidebar:
                     except Exception as e:
                         st.error(f"Failed to parse folder: {e}")
 
-        st.markdown("---")
-        if st.button("Use sample logs", type="secondary", use_container_width=True):
+        if st.button("🧪", key="sample_btn", help="Load sample logs", type="secondary"):
             sample_path = Path(__file__).resolve().parent / "samples" / "logs.jsonl"
             if sample_path.exists():
                 state.clear_data()
@@ -299,7 +305,14 @@ elif state.get_traces():
     render_trace_list(state.get_filtered_traces())
 else:
     # Empty state
-    st.markdown("## Agentic Trace Monitor")
+    st.markdown(
+        '<div style="padding:4px 0 24px 0;line-height:1.1">'
+        '<span style="font-size:2rem;font-weight:900;letter-spacing:-0.03em;color:#4fc3f7">g</span>'
+        '<span style="font-size:2rem;font-weight:700;letter-spacing:-0.02em;color:#e0e0e0">Trace</span>'
+        '<span style="font-size:2rem;font-weight:300;color:#9e9e9e;margin-left:7px">Monitor</span>'
+        "</div>",
+        unsafe_allow_html=True,
+    )
     st.markdown(
         """
         <div style="text-align:center; padding:60px 20px; color:#9e9e9e;">

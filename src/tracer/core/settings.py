@@ -25,8 +25,8 @@ class Settings(BaseSettings):
     aws_default_region: str = Field(default="us-east-1", alias="AWS_DEFAULT_REGION")
 
     # ── CloudWatch ──────────────────────────────────────────────────────
-    log_group_name: str = Field(
-        default="/aws/bedrock-agentcore/runtimes/ai_exception_prod_ExceptionAgent-eEqZuQ3GF1-DEFAULT",
+    log_group_name: str | None = Field(
+        default=None,
         alias="LOG_GROUP_NAME",
     )
     log_filter_pattern: str = Field(
@@ -41,6 +41,12 @@ class Settings(BaseSettings):
         default=900,
         alias="SPAN_CONTENT_MAX_CHARS",
     )
+
+    # ── LLM Pricing (USD per million tokens) ────────────────────────────
+    price_input: float = Field(default=1.00, alias="PRICE_INPUT")
+    price_output: float = Field(default=5.00, alias="PRICE_OUTPUT")
+    price_cache_creation: float = Field(default=1.25, alias="PRICE_CACHE_CREATION")
+    price_cache_read: float = Field(default=0.10, alias="PRICE_CACHE_READ")
 
     # ── S3 (single bucket, different prefixes) ───────────────────────────
     s3_bucket: str = Field(default="ai-exception-poc-data", alias="S3_BUCKET")

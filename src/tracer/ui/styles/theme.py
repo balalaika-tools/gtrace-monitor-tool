@@ -274,7 +274,6 @@ def apply_theme():
             position: absolute;
             left: 0;
             bottom: calc(100%% + 6px);
-            transform: translateX(0);
             background: %(bg_card)s;
             border: 1px solid %(border)s;
             border-radius: 6px;
@@ -282,7 +281,8 @@ def apply_theme():
             font-size: 0.72rem;
             color: %(text_primary)s;
             line-height: 1.6;
-            white-space: nowrap;
+            white-space: normal;
+            width: 210px;
             z-index: 9999;
             pointer-events: none;
             font-weight: 400;
@@ -290,23 +290,45 @@ def apply_theme():
         }
         .help-icon:hover .help-tooltip { display: block; }
 
+        /* ── File uploader: strip element-container padding that causes extra height ── */
+        div[data-testid="stElementContainer"]:has(div[data-testid="stFileUploader"]) {
+            padding: 0 !important;
+            margin: 0 !important;
+            line-height: 0 !important;
+        }
+
         /* ── File uploader: collapse dropzone → single coloured button ── */
         div[data-testid="stFileUploader"] {
             width: 100%% !important;
+            height: 36px !important;
+            min-height: unset !important;
+            max-height: 36px !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            line-height: 0 !important;
+            font-size: 0 !important;
+            overflow: hidden !important;
         }
         section[data-testid="stFileUploaderDropzone"] {
             border: none !important;
             background: transparent !important;
             padding: 0 !important;
             min-height: 0 !important;
+            height: 36px !important;
             width: 100%% !important;
             box-sizing: border-box !important;
+            overflow: hidden !important;
         }
         section[data-testid="stFileUploaderDropzone"] > div {
             padding: 0 !important;
+            margin: 0 !important;
             gap: 0 !important;
             width: 100%% !important;
+            height: 36px !important;
             box-sizing: border-box !important;
+            overflow: hidden !important;
+            line-height: 0 !important;
+            font-size: 0 !important;
         }
         /* hide upload icon SVG (sits outside the button) */
         section[data-testid="stFileUploaderDropzone"] svg {
@@ -324,27 +346,37 @@ def apply_theme():
         section[data-testid="stFileUploaderDropzone"] > span {
             display: block !important;
             width: 100%% !important;
+            height: 36px !important;
         }
         /* Browse button — accent coloured, full width, height-matched to folder picker */
         section[data-testid="stFileUploaderDropzone"] button {
+            -webkit-appearance: none !important;
+            appearance: none !important;
             background: %(accent)s !important;
             color: %(bg_primary)s !important;
             border: none !important;
             border-radius: 8px !important;
             font-weight: 600 !important;
             font-size: 0.85rem !important;
-            padding: 9px 16px !important;
+            padding: 0 16px !important;
+            padding-block: 0 !important;
             width: 100%% !important;
-            min-height: 38px !important;
-            line-height: 1.4 !important;
+            height: 36px !important;
+            min-height: 36px !important;
+            max-height: 36px !important;
+            line-height: 36px !important;
             box-sizing: border-box !important;
             cursor: pointer !important;
             transition: background 0.15s !important;
             display: block !important;
+            overflow: hidden !important;
         }
         /* button inner label div — also needs full width */
         section[data-testid="stFileUploaderDropzone"] button > div {
             width: 100%% !important;
+            height: 36px !important;
+            line-height: 36px !important;
+            overflow: hidden !important;
         }
         section[data-testid="stFileUploaderDropzone"] button:hover {
             background: %(accent_hover)s !important;
@@ -352,6 +384,53 @@ def apply_theme():
         /* Hide Streamlit's own "Limit 200MB" line — we render our own below */
         section[data-testid="stFileUploaderDropzone"] small {
             display: none !important;
+        }
+
+        /* ── Folder picker iframe: remove inline baseline gap ── */
+        div.st-key-folder_picker_widget {
+            line-height: 0 !important;
+            font-size: 0 !important;
+        }
+        div.st-key-folder_picker_widget iframe {
+            display: block !important;
+            vertical-align: top !important;
+        }
+
+        /* ── Sample logs floating button ── */
+        div[data-testid="stSidebarContent"] div.st-key-sample_btn {
+            position: fixed;
+            bottom: 20px;
+            left: 14px;
+            z-index: 9999;
+            width: auto !important;
+        }
+        div[data-testid="stSidebarContent"] div.st-key-sample_btn button {
+            width: 38px !important;
+            height: 38px !important;
+            min-height: 0 !important;
+            border-radius: 50%% !important;
+            padding: 0 !important;
+            background: %(bg_card)s !important;
+            border: 1px solid %(border)s !important;
+            color: %(text_secondary)s !important;
+            font-size: 1rem !important;
+            line-height: 1 !important;
+            cursor: pointer !important;
+            transition: border-color 0.2s, color 0.2s, background 0.2s !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.35) !important;
+        }
+        div[data-testid="stSidebarContent"] div.st-key-sample_btn button:hover {
+            background: %(bg_secondary)s !important;
+            border-color: %(accent)s !important;
+            color: %(accent)s !important;
+        }
+        div[data-testid="stSidebarContent"] div.st-key-sample_btn button p {
+            font-size: 1rem !important;
+            line-height: 1 !important;
+            margin: 0 !important;
         }
 
         /* Smaller font for filter area */
