@@ -89,8 +89,19 @@ src/
 
 ## Getting Started
 
+### Prerequisites
+
+- [uv](https://docs.astral.sh/uv/getting-started/installation/) — fast Python package manager
+
 ```bash
-pip install -r requirements.txt
+# Install uv (if not already installed)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+### Run
+
+```bash
 cp .env.example .env  # fill in credentials
-streamlit run src/tracer/ui/app.py
+uv sync
+uv run streamlit run src/tracer/app.py
 ```
