@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -15,6 +16,7 @@ class Settings(BaseSettings):
 
     # ── General ──────────────────────────────────────────────────────────
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
+    cache_dir: Path = Field(default=Path(".cache") / "traces", alias="CACHE_DIR")
 
     # ── AWS ──────────────────────────────────────────────────────────────
     aws_access_key_id: str | None = Field(default=None, alias="AWS_ACCESS_KEY_ID")
